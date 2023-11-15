@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, ReadBytesExt};
-use std::{io::Cursor, io::Read, net::IpAddr, net::UdpSocket, time::Duration};
+use std::{io::Cursor, io::Read, io::Seek, net::IpAddr, net::UdpSocket, time::Duration};
 
 #[derive(Debug)]
 struct SFlowRecord {
@@ -9,7 +9,7 @@ struct SFlowRecord {
 }
 
 impl SFlowRecord {
-    fn parse(buf: &mut Cursor<&[u8; 9000]>) -> SFlowRecord {
+    fn parse<T: Read + Seek>(buf: &mut T) -> SFlowRecord {
         let record_type = buf.read_u32::<BigEndian>().unwrap();
         let length = buf.read_u32::<BigEndian>().unwrap();
         let mut data = vec![0; length as usize];
@@ -20,6 +20,54 @@ impl SFlowRecord {
             data,
         }
     }
+}
+
+struct SFlowRawPacketHeader {
+    protocol: u32,
+    frame_length: u32,
+    stripped: u32,
+    header_size: u32,
+    header: Vec<u8>,
+}
+
+struct SFlowEthernetFrame {
+    frame_length: u32,
+    payload: Vec<u8>,
+}
+
+struct SFlowIpv4 {
+    length: u32,
+    protocol: u32,
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_port: u32,
+    dst_port: u32,
+    tcp_flags: u32,
+    tos: u32,
+}
+
+struct SFlowIpv6 {
+    length: u32,
+    protocol: u32,
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_port: u32,
+    dst_port: u32,
+    tcp_flags: u32,
+    priority: u32,
+}
+
+struct SFlowExtendedSwitch {
+    src_vlan: u32,
+    src_priority: u32,
+    dst_vlan: u32,
+    dst_priority: u32,
+}
+
+struct SFlowExtendedRouter {
+    nexthop: IpAddr,
+    src_mask: u32,
+    dst_mask: u32,
 }
 
 #[derive(Debug)]
@@ -41,7 +89,7 @@ struct SFlowSample {
 }
 
 impl SFlowSample {
-    fn parse(buf: &mut Cursor<&[u8; 9000]>) -> SFlowSample {
+    fn parse<T: Read + Seek>(buf: &mut T) -> SFlowSample {
         let sample_type = buf.read_u32::<BigEndian>().unwrap();
         let sample_length = buf.read_u32::<BigEndian>().unwrap();
         let sequence_number = buf.read_u32::<BigEndian>().unwrap();
@@ -58,11 +106,12 @@ impl SFlowSample {
         let mut records = Vec::new();
 
         for _ in 0..num_records {
-            let record_type = buf.read_u32::<BigEndian>().unwrap();
-            let length = buf.read_u32::<BigEndian>().unwrap();
-            let mut data = vec![0; length as usize];
-            buf.read_exact(&mut data).unwrap();
-            records.push(SFlowRecord::parse(buf));
+            match sample_type {
+                3 => {
+                    records.push(SFlowRecord::parse(buf));
+                }
+                _ => println!("Unknown sample type"),
+            }
         }
 
         SFlowSample {
@@ -97,7 +146,7 @@ struct SFlowDatagram {
 }
 
 impl SFlowDatagram {
-    fn parse(buf: &mut Cursor<&[u8; 9000]>) -> SFlowDatagram {
+    fn parse<T: Read + Seek>(buf: &mut T) -> SFlowDatagram {
         let version = buf.read_u32::<BigEndian>().unwrap();
         let agent_address_type = buf.read_u32::<BigEndian>().unwrap();
         let agent_address: IpAddr;
@@ -133,14 +182,15 @@ impl SFlowDatagram {
         }
     }
 }
-
 fn main() {
     let socket = UdpSocket::bind("0.0.0.0:6344").expect("couldn't bind to address");
     let mut buf = [0; 9000];
 
+    let mut counter = 0;
     loop {
+        counter += 1;
         let (amt, src) = socket.recv_from(&mut buf).expect("didn't receive data");
-        let mut c = Cursor::new(&buf);
-        dbg!(SFlowDatagram::parse(&mut c));
+        let mut c = Cursor::new(buf.clone());
+        let datagram = SFlowDatagram::parse(&mut c);
     }
 }
