@@ -1,6 +1,7 @@
 use byteorder::{BigEndian, ReadBytesExt};
+use std::sync::mpsc;
+use std::thread;
 use std::{io::Cursor, io::Read, io::Seek, net::IpAddr, net::UdpSocket, time::Duration};
-
 #[derive(Debug)]
 struct SFlowRecord {
     record_type: u32,
@@ -185,12 +186,17 @@ impl SFlowDatagram {
 fn main() {
     let socket = UdpSocket::bind("0.0.0.0:6344").expect("couldn't bind to address");
     let mut buf = [0; 9000];
+    let (tx, rx) = mpsc::channel::<[u8; 9000]>();
 
-    let mut counter = 0;
-    loop {
-        counter += 1;
-        let (amt, src) = socket.recv_from(&mut buf).expect("didn't receive data");
-        let mut c = Cursor::new(buf.clone());
+    let th = thread::spawn(move || loop {
+        let mut c = Cursor::new(rx.recv().unwrap());
         let datagram = SFlowDatagram::parse(&mut c);
+        // println!("{:?}", datagram);
+    });
+    loop {
+        let (amt, src) = socket.recv_from(&mut buf).expect("didn't receive data");
+        tx.send(buf.clone()).unwrap();
     }
+
+    th.join().unwrap();
 }
