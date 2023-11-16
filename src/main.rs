@@ -1,8 +1,11 @@
+mod listeners;
+
 use byteorder::{BigEndian, ReadBytesExt};
+use listeners::{PCapReceiver, Receiver, UdpReceiver};
 use mac_address::MacAddress;
 use std::sync::mpsc;
 use std::thread;
-use std::{io::Cursor, io::Read, io::Seek, net::IpAddr, net::UdpSocket, time::Duration};
+use std::{io::Cursor, io::Read, io::Seek, net::IpAddr, time::Duration};
 #[derive(Debug)]
 struct SFlowRecord {
     record_type: u32,
@@ -309,7 +312,8 @@ impl SFlowDatagram {
     }
 }
 fn main() {
-    let socket = UdpSocket::bind("0.0.0.0:6344").expect("couldn't bind to address");
+    let mut socket = UdpReceiver::new("0.0.0.0:6343");
+    // let mut socket = PCapReceiver::new("any", "udp dst port 6343", 9000);
     let mut buf = [0; 9000];
     let (tx, rx) = mpsc::channel::<[u8; 9000]>();
 
@@ -354,8 +358,9 @@ fn main() {
             }
         }
     });
+
     loop {
-        let (amt, src) = socket.recv_from(&mut buf).expect("didn't receive data");
+        let (amt, src) = socket.receive(&mut buf).expect("didn't receive data");
         tx.send(buf.clone()).unwrap();
     }
 
