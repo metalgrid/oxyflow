@@ -3,10 +3,13 @@ mod listeners;
 use byteorder::{BigEndian, ReadBytesExt};
 use listeners::{PCapReceiver, Receiver, UdpReceiver};
 use mac_address::MacAddress;
+use std::collections::HashMap;
+use std::net::Ipv4Addr;
 use std::sync::mpsc;
 use std::thread;
 use std::{io::Cursor, io::Read, io::Seek, net::IpAddr, time::Duration};
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SFlowRecord {
     record_type: u32,
     length: u32,
@@ -27,6 +30,8 @@ impl SFlowRecord {
     }
 }
 
+// allow unused fields
+#[allow(dead_code)]
 #[derive(Debug)]
 struct SFlowRawPacketHeader {
     protocol: u32,
@@ -55,6 +60,7 @@ impl From<SFlowRecord> for SFlowRawPacketHeader {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SFlowEthernetFrame {
     frame_length: u32,
     source_mac: MacAddress,
@@ -81,6 +87,7 @@ impl From<SFlowRecord> for SFlowEthernetFrame {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SFlowIpv4 {
     length: u32,
     protocol: u32,
@@ -116,6 +123,7 @@ impl From<SFlowRecord> for SFlowIpv4 {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SFlowIpv6 {
     length: u32,
     protocol: u32,
@@ -154,6 +162,7 @@ impl From<SFlowRecord> for SFlowIpv6 {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SFlowExtendedSwitch {
     src_vlan: u32,
     src_priority: u32,
@@ -178,6 +187,7 @@ impl From<SFlowRecord> for SFlowExtendedSwitch {
 
 // TODO: Implement
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SFlowExtendedRouter {
     nexthop: IpAddr,
     src_mask: u32,
@@ -200,6 +210,7 @@ impl From<SFlowRecord> for SFlowExtendedRouter {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SFlowSample {
     sample_type: u32,
     sample_length: u32,
@@ -263,6 +274,7 @@ impl SFlowSample {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct SFlowDatagram {
     version: u32,
     agent_address_type: u32,
@@ -312,12 +324,12 @@ impl SFlowDatagram {
     }
 }
 fn main() {
-    let mut socket = UdpReceiver::new("0.0.0.0:6343");
-    // let mut socket = PCapReceiver::new("any", "udp dst port 6343", 9000);
+    // let mut socket = UdpReceiver::new("0.0.0.0:6343");
+    let mut socket = PCapReceiver::new("any", "udp dst port 6343", 9000);
     let mut buf = [0; 9000];
     let (tx, rx) = mpsc::channel::<[u8; 9000]>();
 
-    let th = thread::spawn(move || loop {
+    thread::spawn(move || loop {
         let mut c = Cursor::new(rx.recv().unwrap());
         let datagram = SFlowDatagram::parse(&mut c);
         println!("{}: {}\n", datagram.agent_address, datagram.num_samples);
@@ -325,8 +337,8 @@ fn main() {
             for record in sample.records {
                 match record.record_type {
                     1 => {
-                        let raw_packet_header = SFlowRawPacketHeader::from(record);
-                        println!("Raw Packet Header: {:?}\n", raw_packet_header);
+                        // let raw_packet_header = SFlowRawPacketHeader::from(record);
+                        // println!("Raw Packet Header: {:?}\n", raw_packet_header);
                     }
                     2 => {
                         let ethernet_frame = SFlowEthernetFrame::from(record);
@@ -359,10 +371,16 @@ fn main() {
         }
     });
 
+    let mut statmap: HashMap<IpAddr, Counter> = HashMap::new();
+
     loop {
         let (amt, src) = socket.receive(&mut buf).expect("didn't receive data");
         tx.send(buf.clone()).unwrap();
+        // add statistics
     }
+}
 
-    th.join().unwrap();
+struct Counter {
+    packets: u128,
+    bytes: u128,
 }
