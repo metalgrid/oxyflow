@@ -1,12 +1,5 @@
 use pcap::{Active, Capture};
-use pnet::packet::ethernet::{EtherType, EthernetPacket};
-use pnet::packet::ipv4::Ipv4Packet;
-use pnet::packet::sll::SLLPacket;
-use pnet::packet::sll2::SLL2Packet;
-use pnet::packet::udp::UdpPacket;
-use pnet::packet::Packet;
-use std::io::Read;
-use std::net::Ipv4Addr;
+use pnet::packet::{ipv4::Ipv4Packet, sll::SLLPacket, udp::UdpPacket, Packet};
 use std::{
     io::Error,
     net::{IpAddr, SocketAddr, UdpSocket},
@@ -37,11 +30,11 @@ pub struct PCapReceiver {
 }
 
 impl PCapReceiver {
-    pub fn new(iface: &str, filter: &str, snaplen: i32) -> Self {
+    pub fn new(iface: &str, filter: &str, snaplen: i32, immediate_mode: bool) -> Self {
         let mut cap = Capture::from_device(iface)
             .unwrap()
             .promisc(true)
-            .immediate_mode(true)
+            .immediate_mode(immediate_mode)
             .snaplen(snaplen)
             .open()
             .unwrap();
