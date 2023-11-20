@@ -11,3 +11,5 @@ mac_address = "1.1.5"
 opentelemetry = { version = "0.21.0", features = ["metrics"] }
 pcap = "1.1.0"
 pnet = { version = "0.34.0", features = ["pcap"] }
+tokio = { version = "1.34.0", features = ["tokio-macros", "full"] }
+warp = "0.3.6"

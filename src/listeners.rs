@@ -1,6 +1,7 @@
 use pcap::{Active, Capture};
 use pnet::packet::ethernet::{EtherType, EthernetPacket};
 use pnet::packet::ipv4::Ipv4Packet;
+use pnet::packet::sll::SLLPacket;
 use pnet::packet::sll2::SLL2Packet;
 use pnet::packet::udp::UdpPacket;
 use pnet::packet::Packet;
@@ -53,9 +54,8 @@ impl Receiver for PCapReceiver {
     fn receive(&mut self, buffer: &mut [u8]) -> Result<(usize, SocketAddr), Error> {
         let packet = self.cap.next_packet().unwrap();
 
-        // let sll2p = SLL2Packet::new(packet.data).unwrap();
-        // let ethp = EthernetPacket::new(packet.data).unwrap();
-        let ip = Ipv4Packet::new(&packet.data[16..]).unwrap(); // nanidafuq is this 16?
+        let sllp = SLLPacket::new(packet.data).unwrap();
+        let ip = Ipv4Packet::new(sllp.payload()).unwrap();
         let udp = UdpPacket::new(ip.payload()).unwrap();
         let addr = SocketAddr::new(IpAddr::V4(ip.get_source()), udp.get_source());
 

@@ -1,11 +1,14 @@
+mod http;
 mod listeners;
 
 use byteorder::{BigEndian, ReadBytesExt};
+
+use http::start_http_server;
 use listeners::{PCapReceiver, Receiver, UdpReceiver};
 use mac_address::MacAddress;
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
-use std::sync::mpsc;
+use std::fmt::{Display, Error, Formatter};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::{io::Cursor, io::Read, io::Seek, net::IpAddr, time::Duration};
 #[derive(Debug)]
@@ -324,7 +327,6 @@ impl SFlowDatagram {
     }
 }
 fn main() {
-    // let mut socket = UdpReceiver::new("0.0.0.0:6343");
     let mut socket = PCapReceiver::new("any", "udp dst port 6343", 9000);
     let mut buf = [0; 9000];
     let (tx, rx) = mpsc::channel::<[u8; 9000]>();
@@ -371,16 +373,30 @@ fn main() {
         }
     });
 
-    let mut statmap: HashMap<IpAddr, Counter> = HashMap::new();
-
+    let statmap: HashMap<IpAddr, Counter> = HashMap::new();
+    let smarc: Arc<Mutex<HashMap<IpAddr, Counter>>> = Arc::new(Mutex::new(statmap));
+    start_http_server(smarc.clone());
     loop {
         let (amt, src) = socket.receive(&mut buf).expect("didn't receive data");
         tx.send(buf.clone()).unwrap();
-        // add statistics
+        println!("hammer time");
+        let mut kys = smarc.lock().unwrap();
+        let metric = kys.entry(src.ip()).or_insert(Counter {
+            packets: 0,
+            bytes: 0,
+        });
+        metric.packets += 1;
+        metric.bytes += amt as u128;
     }
 }
 
 struct Counter {
     packets: u128,
     bytes: u128,
+}
+
+impl Display for Counter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "packets={},bytes={}", self.packets, self.bytes)
+    }
 }
