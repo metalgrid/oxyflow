@@ -218,7 +218,7 @@ impl From<Record> for RawPacket {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub enum EtherType {
     Ipv4,
     Ipv6,
@@ -251,6 +251,19 @@ impl Display for EtherType {
             EtherType::Ipv4 => write!(f, "IPv4"),
             EtherType::Ipv6 => write!(f, "IPv6"),
             EtherType::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+impl Serialize for EtherType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            EtherType::Ipv4 => serializer.serialize_str("IPv4"),
+            EtherType::Ipv6 => serializer.serialize_str("IPv6"),
+            EtherType::Unknown => serializer.serialize_str("Unknown"),
         }
     }
 }
