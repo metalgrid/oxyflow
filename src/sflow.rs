@@ -1,4 +1,5 @@
 use std::{
+    fmt::{Display, Error, Formatter},
     io::{Cursor, Read, Seek},
     net::IpAddr,
     time::Duration,
@@ -217,26 +218,67 @@ impl From<Record> for RawPacket {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub enum EtherType {
+    Ipv4,
+    Ipv6,
+    Unknown,
+}
+
+impl From<u32> for EtherType {
+    fn from(ethertype: u32) -> Self {
+        match ethertype {
+            0x0800 => EtherType::Ipv4,
+            0x86DD => EtherType::Ipv6,
+            _ => EtherType::Unknown,
+        }
+    }
+}
+
+impl Into<u32> for EtherType {
+    fn into(self) -> u32 {
+        match self {
+            EtherType::Ipv4 => 0x0800,
+            EtherType::Ipv6 => 0x86DD,
+            EtherType::Unknown => 0x0000,
+        }
+    }
+}
+
+impl Display for EtherType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            EtherType::Ipv4 => write!(f, "IPv4"),
+            EtherType::Ipv6 => write!(f, "IPv6"),
+            EtherType::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct EthernetFrame {
-    pub frame_length: u32,
+    pub length: u32,
     pub src_mac: MacAddress,
     pub dst_mac: MacAddress,
-    pub ethertype: u16,
+    pub ethertype: EtherType,
 }
 impl From<Record> for EthernetFrame {
     fn from(record: Record) -> Self {
         let mut buf = Cursor::new(record.data);
-        let frame_length = buf.read_u32::<BigEndian>().unwrap();
+        let length = buf.read_u32::<BigEndian>().unwrap();
         let mut mac_buf = [0; 6];
         buf.read_exact(&mut mac_buf).unwrap();
+        // MAC addresses in the ethernet record are stored in a padded u8, so we need to skip the padding
+        buf.set_position(buf.position() + 2);
         let src_mac = MacAddress::new(mac_buf);
         buf.read_exact(&mut mac_buf).unwrap();
         let dst_mac = MacAddress::new(mac_buf);
-        let ethertype = buf.read_u16::<BigEndian>().unwrap();
+        // MAC addresses in the ethernet record are stored in a padded u8, so we need to skip the padding
+        buf.set_position(buf.position() + 2);
+        let ethertype: EtherType = buf.read_u32::<BigEndian>().unwrap().into();
         EthernetFrame {
-            frame_length,
+            length,
             src_mac,
             dst_mac,
             ethertype,

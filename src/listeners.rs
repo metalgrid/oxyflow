@@ -45,16 +45,19 @@ impl PCapReceiver {
 
 impl Receiver for PCapReceiver {
     fn receive(&mut self, buffer: &mut [u8]) -> Result<(usize, SocketAddr), Error> {
-        let packet = self.cap.next_packet().unwrap();
+        match self.cap.next_packet() {
+            Ok(packet) => {
+                let sllp = SLLPacket::new(packet.data).unwrap();
+                let ip = Ipv4Packet::new(sllp.payload()).unwrap();
+                let udp = UdpPacket::new(ip.payload()).unwrap();
+                let addr = SocketAddr::new(IpAddr::V4(ip.get_source()), udp.get_source());
 
-        let sllp = SLLPacket::new(packet.data).unwrap();
-        let ip = Ipv4Packet::new(sllp.payload()).unwrap();
-        let udp = UdpPacket::new(ip.payload()).unwrap();
-        let addr = SocketAddr::new(IpAddr::V4(ip.get_source()), udp.get_source());
+                let len = udp.payload().len();
 
-        let len = udp.payload().len();
-
-        buffer[..len].copy_from_slice(udp.payload());
-        Ok((len, addr))
+                buffer[..len].copy_from_slice(udp.payload());
+                Ok((len, addr))
+            }
+            Err(e) => Err(Error::new(std::io::ErrorKind::Other, e)),
+        }
     }
 }

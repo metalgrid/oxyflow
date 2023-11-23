@@ -1,5 +1,5 @@
 use mac_address::MacAddress;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
@@ -32,12 +32,12 @@ pub trait Collector {
     fn collect(&mut self, sample: sflow::SampleType) -> &mut Self;
 }
 
-#[derive(Eq, Hash, PartialEq)]
-struct FlowCounterKey {
-    src_mac: MacAddress,
-    dst_mac: MacAddress,
-    vlan: u32,
-    protocol: u32,
+#[derive(Eq, Hash, PartialEq, Serialize, Debug)]
+pub struct FlowCounterKey {
+    pub src_mac: MacAddress,
+    pub dst_mac: MacAddress,
+    pub vlan: u32,
+    pub protocol: u32,
 }
 
 pub type FlowCounter = HashMap<FlowCounterKey, Counter>;
@@ -60,16 +60,15 @@ impl Collector for FlowCounter {
                         sflow::RecordType::EthernetFrame(record) => {
                             key.src_mac = record.src_mac;
                             key.dst_mac = record.dst_mac;
+                            key.protocol = record.ethertype.into();
                         }
                         sflow::RecordType::ExtendedSwitch(record) => {
                             key.vlan = record.src_vlan;
                         }
                         sflow::RecordType::Ipv4(record) => {
-                            key.protocol = record.protocol;
                             bytes = record.length * sample.sampling_rate;
                         }
                         sflow::RecordType::Ipv6(record) => {
-                            key.protocol = record.protocol;
                             bytes = record.length * sample.sampling_rate;
                         }
                         _ => {}

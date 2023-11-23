@@ -458,6 +458,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4863ee94f19ed315bf3bc00299338d857d4b5bc856af375cc97d237382ad3856"
 dependencies = [
  "nix",
+ "serde",
  "winapi",
 ]
 
@@ -600,6 +601,7 @@ dependencies = [
  "pcap",
  "pnet",
  "serde",
+ "serde_json",
  "tokio",
  "warp",
 ]
