@@ -70,17 +70,20 @@ impl Datagram {
         let version = buf.read_u32::<BigEndian>().unwrap();
         let agent_address_type = buf.read_u32::<BigEndian>().unwrap();
         let agent_address: IpAddr;
-        if agent_address_type == 1 {
-            let mut buffer = [0; 4];
-            buf.read_exact(&mut buffer).unwrap();
-            agent_address = IpAddr::V4(buffer.into());
-        } else if agent_address_type == 2 {
-            let mut buffer = [0; 16];
-            buf.read_exact(&mut buffer).unwrap();
-            agent_address = IpAddr::V6(buffer.into());
-        } else {
-            panic!("agent_address_type not supported");
+        match agent_address_type {
+            1 => {
+                let mut buffer = [0; 4];
+                buf.read_exact(&mut buffer).unwrap();
+                agent_address = IpAddr::V4(buffer.into());
+            }
+            2 => {
+                let mut buffer = [0; 16];
+                buf.read_exact(&mut buffer).unwrap();
+                agent_address = IpAddr::V6(buffer.into());
+            }
+            _ => panic!("agent_address_type not supported"),
         }
+
         let sub_agent_id = buf.read_u32::<BigEndian>().unwrap();
         let sequence_number = buf.read_u32::<BigEndian>().unwrap();
         let uptime = Duration::from_millis(buf.read_u32::<BigEndian>().unwrap().into());
@@ -276,6 +279,7 @@ impl From<RawPacket> for PacketHeader {
                 dst_addr = IpAddr::V6(addr_buf.into());
             }
             _ => {
+                println!("[Warning] Unknown ethertype: {}", ethertype);
                 src_addr = IpAddr::V4([0; 4].into());
                 dst_addr = IpAddr::V4([0; 4].into());
             }
