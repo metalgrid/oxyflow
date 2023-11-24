@@ -280,6 +280,8 @@ impl From<RawPacket> for PacketHeader {
             }
             _ => {
                 println!("[Warning] Unknown ethertype: {}", ethertype);
+                // write the entire packet in a file for later analysis
+                std::fs::write("unknown_ethertype.pcap", raw_packet.header).unwrap();
                 src_addr = IpAddr::V4([0; 4].into());
                 dst_addr = IpAddr::V4([0; 4].into());
             }

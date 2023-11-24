@@ -9,8 +9,8 @@ use crate::sflow::{self, SampleType};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Counter {
-    pub packets: u128,
-    pub bytes: u128,
+    pub packets: u64,
+    pub bytes: u64,
 }
 
 impl Display for Counter {
@@ -53,12 +53,12 @@ impl Collector for FlowCounter {
                     protocol: 0,
                 };
                 let pkts = sample.sampling_rate;
-                let mut bytes: u128 = 0;
+                let mut bytes: u64 = 0;
 
                 for record in sample.records {
                     match record {
                         sflow::RecordType::RawPacket(record) => {
-                            bytes = record.frame_length as u128 * sample.sampling_rate as u128;
+                            bytes = record.frame_length as u64 * sample.sampling_rate as u64;
                             let hdr = record.header();
                             key.src_mac = hdr.src_mac;
                             key.dst_mac = hdr.dst_mac;
@@ -73,17 +73,17 @@ impl Collector for FlowCounter {
                             key.vlan = record.src_vlan;
                         }
                         sflow::RecordType::Ipv4(record) => {
-                            bytes = record.length as u128 * sample.sampling_rate as u128;
+                            bytes = record.length as u64 * sample.sampling_rate as u64;
                         }
                         sflow::RecordType::Ipv6(record) => {
-                            bytes = record.length as u128 * sample.sampling_rate as u128;
+                            bytes = record.length as u64 * sample.sampling_rate as u64;
                         }
                         _ => {}
                     }
                 }
                 let counter = self.entry(key).or_insert_with(Counter::default);
-                counter.packets += pkts as u128;
-                counter.bytes += bytes as u128;
+                counter.packets += pkts as u64;
+                counter.bytes += bytes as u64;
             }
             _ => {}
         }

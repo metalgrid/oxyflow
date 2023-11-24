@@ -46,7 +46,7 @@ fn main() {
                     bytes: 0,
                 });
                 metric.packets += 1;
-                metric.bytes += amt as u128;
+                metric.bytes += amt as u64;
             }
             Err(e) => println!("Error: {}", e),
         }
