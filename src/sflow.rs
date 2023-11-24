@@ -217,6 +217,86 @@ impl From<Record> for RawPacket {
         }
     }
 }
+impl RawPacket {
+    pub fn header(self) -> PacketHeader {
+        PacketHeader::from(self)
+    }
+}
+
+// https://sflow.org/SFLOW-STRUCTS5.txt /* Packet Header Data */
+pub struct PacketHeader {
+    pub dst_mac: MacAddress,
+    pub src_mac: MacAddress,
+    pub ethertype: u16,
+    pub ip_ver_hdr: u8,
+    pub ip_tos: u8,
+    pub ip_total_len: u16,
+    pub id: u16,
+    pub flags: u16,
+    pub ttl: u8,
+    pub ip_proto: u8,
+    pub _ck_sum: u16,
+    pub src_addr: IpAddr,
+    pub dst_addr: IpAddr,
+}
+
+impl From<RawPacket> for PacketHeader {
+    fn from(raw_packet: RawPacket) -> Self {
+        let mut buf =
+            Cursor::new(raw_packet.header[..(raw_packet.header_size - 1) as usize].to_vec());
+        let mut mac_buf = [0; 6];
+        buf.read_exact(&mut mac_buf).unwrap();
+        let dst_mac = MacAddress::new(mac_buf);
+        buf.read_exact(&mut mac_buf).unwrap();
+        let src_mac = MacAddress::new(mac_buf);
+        let ethertype = buf.read_u16::<BigEndian>().unwrap();
+        let ip_ver_hdr = buf.read_u8().unwrap();
+        let ip_tos = buf.read_u8().unwrap();
+        let ip_total_len = buf.read_u16::<BigEndian>().unwrap();
+        let id = buf.read_u16::<BigEndian>().unwrap();
+        let flags = buf.read_u16::<BigEndian>().unwrap();
+        let ttl = buf.read_u8().unwrap();
+        let ip_proto = buf.read_u8().unwrap();
+        let _ck_sum = buf.read_u16::<BigEndian>().unwrap();
+        let src_addr: IpAddr;
+        let dst_addr: IpAddr;
+        match ethertype {
+            0x0800 => {
+                // IPv4
+                let mut addr_buf = [0; 4];
+                buf.read_exact(&mut addr_buf).unwrap();
+                src_addr = IpAddr::V4(addr_buf.into());
+                dst_addr = IpAddr::V4(addr_buf.into());
+            }
+            0x08DD => {
+                // IPv6
+                let mut addr_buf = [0; 16];
+                buf.read_exact(&mut addr_buf).unwrap();
+                src_addr = IpAddr::V6(addr_buf.into());
+                dst_addr = IpAddr::V6(addr_buf.into());
+            }
+            _ => {
+                src_addr = IpAddr::V4([0; 4].into());
+                dst_addr = IpAddr::V4([0; 4].into());
+            }
+        }
+        PacketHeader {
+            dst_mac,
+            src_mac,
+            ethertype,
+            ip_ver_hdr,
+            ip_tos,
+            ip_total_len,
+            id,
+            flags,
+            ttl,
+            ip_proto,
+            _ck_sum,
+            src_addr,
+            dst_addr,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum EtherType {

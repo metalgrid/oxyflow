@@ -1,5 +1,5 @@
 use mac_address::MacAddress;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
@@ -53,10 +53,17 @@ impl Collector for FlowCounter {
                     protocol: 0,
                 };
                 let pkts = sample.sampling_rate;
-                let mut bytes = 0;
+                let mut bytes: u128 = 0;
 
                 for record in sample.records {
                     match record {
+                        sflow::RecordType::RawPacket(record) => {
+                            bytes = record.frame_length as u128 * sample.sampling_rate as u128;
+                            let hdr = record.header();
+                            key.src_mac = hdr.src_mac;
+                            key.dst_mac = hdr.dst_mac;
+                            key.protocol = hdr.ethertype.into();
+                        }
                         sflow::RecordType::EthernetFrame(record) => {
                             key.src_mac = record.src_mac;
                             key.dst_mac = record.dst_mac;
@@ -66,10 +73,10 @@ impl Collector for FlowCounter {
                             key.vlan = record.src_vlan;
                         }
                         sflow::RecordType::Ipv4(record) => {
-                            bytes = record.length * sample.sampling_rate;
+                            bytes = record.length as u128 * sample.sampling_rate as u128;
                         }
                         sflow::RecordType::Ipv6(record) => {
-                            bytes = record.length * sample.sampling_rate;
+                            bytes = record.length as u128 * sample.sampling_rate as u128;
                         }
                         _ => {}
                     }
