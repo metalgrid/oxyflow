@@ -231,14 +231,6 @@ pub struct PacketHeader {
     pub dst_mac: MacAddress,
     pub src_mac: MacAddress,
     pub ethertype: u16,
-    pub ip_ver_hdr: u8,
-    pub ip_tos: u8,
-    pub ip_total_len: u16,
-    pub id: u16,
-    pub flags: u16,
-    pub ttl: u8,
-    pub ip_proto: u8,
-    pub _ck_sum: u16,
     pub src_addr: IpAddr,
     pub dst_addr: IpAddr,
 }
@@ -253,35 +245,83 @@ impl From<RawPacket> for PacketHeader {
         buf.read_exact(&mut mac_buf).unwrap();
         let src_mac = MacAddress::new(mac_buf);
         let ethertype = buf.read_u16::<BigEndian>().unwrap();
-        let ip_ver_hdr = buf.read_u8().unwrap();
-        let ip_tos = buf.read_u8().unwrap();
-        let ip_total_len = buf.read_u16::<BigEndian>().unwrap();
-        let id = buf.read_u16::<BigEndian>().unwrap();
-        let flags = buf.read_u16::<BigEndian>().unwrap();
-        let ttl = buf.read_u8().unwrap();
-        let ip_proto = buf.read_u8().unwrap();
-        let _ck_sum = buf.read_u16::<BigEndian>().unwrap();
         let src_addr: IpAddr;
         let dst_addr: IpAddr;
         match ethertype {
             0x0800 => {
+                let ip_ver_hdr = buf.read_u8().unwrap();
+                let ip_tos = buf.read_u8().unwrap();
+                let ip_total_len = buf.read_u16::<BigEndian>().unwrap();
+                let id = buf.read_u16::<BigEndian>().unwrap();
+                let flags = buf.read_u16::<BigEndian>().unwrap();
+                let ttl = buf.read_u8().unwrap();
+                let ip_proto = buf.read_u8().unwrap();
+                let _ck_sum = buf.read_u16::<BigEndian>().unwrap();
                 // IPv4
                 let mut addr_buf = [0; 4];
                 buf.read_exact(&mut addr_buf).unwrap();
                 src_addr = IpAddr::V4(addr_buf.into());
                 dst_addr = IpAddr::V4(addr_buf.into());
             }
-            0x08DD => {
+            0x86DD => {
+                let _kys = buf.read_u64::<BigEndian>().unwrap(); // version, traffic class, flow label
+                let plen = buf.read_u16::<BigEndian>().unwrap(); // payload length
+                let _nh_hl = buf.read_u16::<BigEndian>().unwrap(); // next header, hop limit
+
                 // IPv6
                 let mut addr_buf = [0; 16];
                 buf.read_exact(&mut addr_buf).unwrap();
                 src_addr = IpAddr::V6(addr_buf.into());
                 dst_addr = IpAddr::V6(addr_buf.into());
             }
+            0x8100 => {
+                // VLAN
+                let _vlan = buf.read_u16::<BigEndian>().unwrap();
+                println!(
+                    "Priority: {}, DEI: {}, VLAN ID: {}",
+                    _vlan >> 13 & 0x7,
+                    _vlan >> 12 & 0x1,
+                    _vlan & 0xfff,
+                );
+                let vlan_etype = buf.read_u16::<BigEndian>().unwrap();
+                match vlan_etype {
+                    0x0800 => {
+                        let ip_ver_hdr = buf.read_u8().unwrap();
+                        let ip_tos = buf.read_u8().unwrap();
+                        let ip_total_len = buf.read_u16::<BigEndian>().unwrap();
+                        let id = buf.read_u16::<BigEndian>().unwrap();
+                        let flags = buf.read_u16::<BigEndian>().unwrap();
+                        let ttl = buf.read_u8().unwrap();
+                        let ip_proto = buf.read_u8().unwrap();
+                        let _ck_sum = buf.read_u16::<BigEndian>().unwrap();
+                        // IPv4
+                        let mut addr_buf = [0; 4];
+                        buf.read_exact(&mut addr_buf).unwrap();
+                        src_addr = IpAddr::V4(addr_buf.into());
+                        dst_addr = IpAddr::V4(addr_buf.into());
+                    }
+                    0x86DD => {
+                        let _kys = buf.read_u64::<BigEndian>().unwrap(); // version, traffic class, flow label
+                        let plen = buf.read_u16::<BigEndian>().unwrap(); // payload length
+                        let _nh_hl = buf.read_u16::<BigEndian>().unwrap(); // next header, hop limit
+
+                        // IPv6
+                        let mut addr_buf = [0; 16];
+                        buf.read_exact(&mut addr_buf).unwrap();
+                        src_addr = IpAddr::V6(addr_buf.into());
+                        dst_addr = IpAddr::V6(addr_buf.into());
+                    }
+                    _ => {
+                        println!("[Warning] Unknown ethertype in VLAN packet: {}", ethertype);
+                        // write the entire packet in a file for later analysis
+                        src_addr = IpAddr::V4([0; 4].into());
+                        dst_addr = IpAddr::V4([0; 4].into());
+                    }
+                }
+            }
             _ => {
-                println!("[Warning] Unknown ethertype: {}", ethertype);
+                println!("[Warning] Unknown ethertype in Raw header: {}", ethertype);
                 // write the entire packet in a file for later analysis
-                std::fs::write("unknown_ethertype.pcap", raw_packet.header).unwrap();
                 src_addr = IpAddr::V4([0; 4].into());
                 dst_addr = IpAddr::V4([0; 4].into());
             }
@@ -290,14 +330,6 @@ impl From<RawPacket> for PacketHeader {
             dst_mac,
             src_mac,
             ethertype,
-            ip_ver_hdr,
-            ip_tos,
-            ip_total_len,
-            id,
-            flags,
-            ttl,
-            ip_proto,
-            _ck_sum,
             src_addr,
             dst_addr,
         }
