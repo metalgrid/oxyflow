@@ -8,6 +8,7 @@ use crate::sflow::Datagram;
 use http::start_http_server;
 use listeners::{PCapReceiver, Receiver, UdpReceiver};
 use metrics::{Counter, FlowCounter};
+use pnet::packet::ipv4::Ipv4Packet;
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
