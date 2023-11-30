@@ -1,11 +1,12 @@
-use mac_address::MacAddress;
+use pnet::{packet::vlan, util::MacAddr};
+use pnet_macros_support::packet::Packet;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
 };
 
-use crate::sflow::{self, SampleType};
+use crate::sflow5::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Counter {
@@ -29,13 +30,13 @@ impl Default for Counter {
 }
 
 pub trait Collector {
-    fn collect(&mut self, sample: sflow::SampleType) -> &mut Self;
+    fn collect(&mut self, sample: SFlowSamplePacket) -> &mut Self;
 }
 
 #[derive(Eq, Hash, PartialEq, Serialize, Debug)]
 pub struct FlowCounterKey {
-    pub src_mac: MacAddress,
-    pub dst_mac: MacAddress,
+    pub src_mac: MacAddr,
+    pub dst_mac: MacAddr,
     pub vlan: u32,
     pub protocol: u32,
 }
@@ -43,50 +44,67 @@ pub struct FlowCounterKey {
 pub type FlowCounter = HashMap<FlowCounterKey, Counter>;
 
 impl Collector for FlowCounter {
-    fn collect(&mut self, sample: sflow::SampleType) -> &mut Self {
-        match sample {
-            SampleType::ExpandedFlowSample(sample) => {
+    fn collect(&mut self, sample: SFlowSamplePacket) -> &mut Self {
+        match sample.get_sample_type() {
+            1 | 3 => {
+                //sFlow sample or an expanded sFlow sample
                 let mut key = FlowCounterKey {
-                    src_mac: MacAddress::default(),
-                    dst_mac: MacAddress::default(),
+                    src_mac: MacAddr::zero(),
+                    dst_mac: MacAddr::zero(),
                     vlan: 0,
                     protocol: 0,
                 };
-                let pkts = sample.sampling_rate;
+                let pkts = sample.get_sampling_rate() as u64;
                 let mut bytes: u64 = 0;
 
-                for record in sample.records {
-                    match record {
-                        sflow::RecordType::RawPacket(record) => {
-                            bytes = record.frame_length as u64 * sample.sampling_rate as u64;
-                            let hdr = record.header();
-                            key.src_mac = hdr.src_mac;
-                            key.dst_mac = hdr.dst_mac;
-                            key.protocol = hdr.ethertype.into();
+                for record in sample.get_records() {
+                    match record.get_record_type() {
+                        //TODO: enumerate these
+                        1 => {
+                            let raw_packet_header =
+                                SFlowRawHeaderPacket::new(record.payload()).unwrap();
+                            bytes = raw_packet_header.get_frame_length() as u64 * pkts as u64;
+                            key.protocol = raw_packet_header.get_protocol();
+                            key.src_mac = raw_packet_header.get_src_mac();
+                            key.dst_mac = raw_packet_header.get_dst_mac();
+                            match raw_packet_header.get_vlan() {
+                                Ok(vlan) => {
+                                    key.vlan = vlan;
+                                }
+                                Err(_) => {} // Do nothing, we can't expect every packet to have a VLAN
+                            }
                         }
-                        sflow::RecordType::EthernetFrame(record) => {
-                            key.src_mac = record.src_mac;
-                            key.dst_mac = record.dst_mac;
-                            key.protocol = record.ethertype.into();
+                        2 => {
+                            let ethernet_frame: SFlowEthernetFrame = record.payload().into();
+                            key.src_mac = ethernet_frame.src_mac;
+                            key.dst_mac = ethernet_frame.dst_mac;
+                            key.protocol = ethernet_frame.ethertype;
                         }
-                        sflow::RecordType::ExtendedSwitch(record) => {
-                            key.vlan = record.src_vlan;
+                        1001 => {
+                            let extended_switch =
+                                SFlowExtendedSwitchPacket::new(record.payload()).unwrap();
+                            key.vlan = extended_switch.get_src_vlan();
                         }
-                        sflow::RecordType::Ipv4(record) => {
-                            bytes = record.length as u64 * sample.sampling_rate as u64;
+                        1002 => {
+                            let ipv4 = SFlowIpv4Packet::new(record.payload()).unwrap();
+                            key.protocol = ipv4.get_protocol();
+                            bytes = ipv4.get_length() as u64 * pkts as u64;
                         }
-                        sflow::RecordType::Ipv6(record) => {
-                            bytes = record.length as u64 * sample.sampling_rate as u64;
+                        1003 => {
+                            let ipv6 = SFlowIpv6Packet::new(record.payload()).unwrap();
+                            key.protocol = ipv6.get_protocol();
+                            bytes = ipv6.get_length() as u64 * pkts as u64;
                         }
                         _ => {}
                     }
                 }
-                let counter = self.entry(key).or_insert_with(Counter::default);
-                counter.packets += pkts as u64;
-                counter.bytes += bytes as u64;
+                let counter = self.entry(key).or_insert(Counter::default());
+                counter.packets += pkts;
+                counter.bytes += bytes;
             }
             _ => {}
         }
+
         self
     }
 }

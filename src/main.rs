@@ -1,18 +1,15 @@
 mod http;
 mod listeners;
 mod metrics;
-mod sflow;
+mod sflow5;
 
-use crate::metrics::Collector;
-use crate::sflow::Datagram;
-use http::start_http_server;
+use crate::{http::start_http_server, metrics::Collector, sflow5::*};
 use listeners::{PCapReceiver, Receiver, UdpReceiver};
 use metrics::{Counter, FlowCounter};
-use pnet::packet::ipv4::Ipv4Packet;
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
-use std::{io::Cursor, net::IpAddr};
 
 fn main() {
     let mut socket = PCapReceiver::new("any", "udp dst port 6343", 9000, true);
@@ -25,18 +22,30 @@ fn main() {
     let flowstats = FlowCounter::new();
     let fsarc: Arc<RwLock<FlowCounter>> = Arc::new(RwLock::new(flowstats));
     let fsc = fsarc.clone();
+    let flow_agent_stats: Arc<RwLock<HashMap<IpAddr, HashMap<String, Counter>>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+    let fas = flow_agent_stats.clone();
 
     thread::spawn(move || loop {
-        let mut c = Cursor::new(rx.recv().unwrap());
-        let datagram = Datagram::parse(&mut c);
-        println!("{}: {}\n", datagram.agent_address, datagram.num_samples);
+        let flow_agent_stats = flow_agent_stats.clone();
+        let boffer = rx.recv().unwrap();
+        let datagram = SFlowPacket::new(&boffer).unwrap();
 
-        for sample in datagram.samples {
-            fsarc.write().unwrap().collect(sample.into());
+        for sample in datagram.get_samples() {
+            let agent_stats = &mut flow_agent_stats.write().unwrap();
+            let agent_stats = agent_stats
+                .entry(IpAddr::V4(datagram.get_agent_address()))
+                .or_insert(HashMap::new())
+                .entry(sample.get_sample_type().to_string())
+                .or_insert(Counter::default());
+            agent_stats.packets += 1;
+            agent_stats.bytes += sample.get_sample_length() as u64;
+
+            fsarc.write().unwrap().collect(sample);
         }
     });
 
-    thread::spawn(move || start_http_server(sc, fsc));
+    thread::spawn(move || start_http_server(sc, fas, fsc));
     loop {
         match socket.receive(&mut buf) {
             Ok((amt, src)) => {
