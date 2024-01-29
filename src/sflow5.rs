@@ -4,7 +4,6 @@ use pnet::packet::Packet;
 use pnet::util::MacAddr;
 use pnet_macros::packet;
 use pnet_macros_support::types::*;
-use std::error::Error;
 use std::io::Cursor;
 use std::net::{Ipv4Addr, Ipv6Addr};
 #[packet]

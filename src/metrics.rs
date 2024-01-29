@@ -1,4 +1,4 @@
-use pnet::{packet::vlan, util::MacAddr};
+use pnet::util::MacAddr;
 use pnet_macros_support::packet::Packet;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -7,6 +7,21 @@ use std::{
 };
 
 use crate::sflow5::*;
+
+#[derive(Debug)]
+pub enum CollectError {
+    InvalidSampleType,
+    InvalidRecordType,
+}
+
+impl Display for CollectError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            CollectError::InvalidSampleType => write!(f, "Invalid sample type"),
+            CollectError::InvalidRecordType => write!(f, "Invalid record type"),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Counter {
@@ -30,7 +45,7 @@ impl Default for Counter {
 }
 
 pub trait Collector {
-    fn collect(&mut self, sample: SFlowSamplePacket) -> &mut Self;
+    fn collect(&mut self, sample: SFlowSamplePacket) -> Result<(), CollectError>;
 }
 
 #[derive(Eq, Hash, PartialEq, Serialize, Debug)]
@@ -44,7 +59,7 @@ pub struct FlowCounterKey {
 pub type FlowCounter = HashMap<FlowCounterKey, Counter>;
 
 impl Collector for FlowCounter {
-    fn collect(&mut self, sample: SFlowSamplePacket) -> &mut Self {
+    fn collect(&mut self, sample: SFlowSamplePacket) -> Result<(), CollectError> {
         match sample.get_sample_type() {
             1 | 3 => {
                 //sFlow sample or an expanded sFlow sample
@@ -85,26 +100,28 @@ impl Collector for FlowCounter {
                                 SFlowExtendedSwitchPacket::new(record.payload()).unwrap();
                             key.vlan = extended_switch.get_src_vlan();
                         }
-                        1002 => {
-                            let ipv4 = SFlowIpv4Packet::new(record.payload()).unwrap();
-                            key.protocol = ipv4.get_protocol();
-                            bytes = ipv4.get_length() as u64 * pkts as u64;
-                        }
+                        1002 => match SFlowIpv4Packet::new(record.payload()) {
+                            Some(ipv4) => {
+                                key.protocol = ipv4.get_protocol();
+                                bytes = ipv4.get_length() as u64 * pkts as u64;
+                            }
+                            None => Err(CollectError::InvalidRecordType)?,
+                        },
                         1003 => {
                             let ipv6 = SFlowIpv6Packet::new(record.payload()).unwrap();
                             key.protocol = ipv6.get_protocol();
                             bytes = ipv6.get_length() as u64 * pkts as u64;
                         }
-                        _ => {}
+                        _ => Err(CollectError::InvalidRecordType)?,
                     }
                 }
                 let counter = self.entry(key).or_insert(Counter::default());
                 counter.packets += pkts;
                 counter.bytes += bytes;
             }
-            _ => {}
+            _ => Err(CollectError::InvalidSampleType)?,
         }
 
-        self
+        Ok(())
     }
 }

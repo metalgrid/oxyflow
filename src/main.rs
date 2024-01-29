@@ -4,7 +4,7 @@ mod metrics;
 mod sflow5;
 
 use crate::{http::start_http_server, metrics::Collector, sflow5::*};
-use listeners::{PCapReceiver, Receiver, UdpReceiver};
+use listeners::{PCapReceiver, Receiver};
 use metrics::{Counter, FlowCounter};
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -41,7 +41,9 @@ fn main() {
             agent_stats.packets += 1;
             agent_stats.bytes += sample.get_sample_length() as u64;
 
-            fsarc.write().unwrap().collect(sample);
+            if let Err(e) = fsarc.write().unwrap().collect(sample) {
+                println!("Error: {:?}", e);
+            }
         }
     });
 
